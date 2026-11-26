@@ -12,6 +12,8 @@ V1.9.2/V1.9.3 的安装启动器本身存在故障，本次请使用本地修复
 
 从 [Releases](https://github.com/tjcisyourdady-gif/NCC-Cashier/releases) 下载完整包，全部解压后运行 `NCC出纳结算工具.exe`。完整包包含运行环境、浏览器和源码。
 
+首次安装请使用 [V1.9.4 完整修复包](https://github.com/tjcisyourdady-gif/NCC-Cashier/releases/download/ncc-cashier-v1.9.4/NCC_cashier_1.9.4_full.zip)。V1.9.5 是不含浏览器的轻量更新测试包，适用于已经安装完整包的用户，通过 V1.9.4 的“自动更新…”下载即可。
+
 首次使用请填写自己的钉钉清单网址并保存，然后使用“调试：仅读清单”核对读取结果。正式运行先等待手动登录文档，再等待登录 NCC。具体规则见包内“使用说明.txt”。
 
 ## 自动更新
@@ -38,3 +40,5 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_package.ps1 -Pyt
 版本和仓库信息在 `release_identity.py`。构建完整包后，使用 `prepare_update_release.py` 生成已签名清单，再使用 `publish_ncc_release.py <发行目录> --publish` 发布到独立仓库。签名私钥由发布者的 Windows 账号加密，仅保留在本机 `.release-secrets` 中，不加入 Git 和发行包。
 
 `--legacy-bridge` 只用于生成旧版程序的一次性迁移发行；后续常规版本使用独立仓库默认发布流程。
+
+轻量更新使用 `build_package.ps1 -UpdateOnly -PublicRelease` 构建，并用 `prepare_update_release.py <轻量ZIP> --update-only` 签名。包内保留全部程序、源码和说明，省略浏览器和用户配置。schema 1 清单的 `full` 字段仍表示客户端所需的完整应用文件更新，并通过 `package_type=application_update` 标明需要复用现有浏览器，以兼容 V1.9.4 客户端。

@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import sys
+from release_identity import APP_VERSION
 from unittest.mock import patch
 import zipfile
 from PyInstaller.archive.readers import CArchiveReader
@@ -10,7 +11,7 @@ import ncc_browser
 from settlement_core import Settings, load_settings
 
 project = Path(__file__).resolve().parent
-version=sys.argv[1] if len(sys.argv)>1 else 'V1.9.4'
+version=sys.argv[1] if len(sys.argv)>1 else 'V'+APP_VERSION
 folder = project / 'release' / ('NCC出纳结算工具_'+version+'_完整版')
 zip_path = project / ('NCC出纳结算工具_'+version+'_完整版.zip')
 root_name = folder.name + '/'

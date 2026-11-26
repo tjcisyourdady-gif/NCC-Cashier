@@ -344,7 +344,7 @@ class UpdateManager:
             urls=[('国内直连通道 '+str(i+1),mirror+package['url']) for i,mirror in enumerate(identity.DOWNLOAD_MIRRORS)]+[('GitHub 官方备用',package['url'])]
             verified=False
             for label,url in urls:
-                self._state(status='downloading',message='正在下载 NCC 完整包…',progress=0,source=label)
+                self._state(status='downloading',message='正在下载 NCC 更新包…',progress=0,source=label)
                 try:
                     hasher,done=hashlib.sha256(),0
                     with open_url(url,12) as response,part.open('wb') as stream:

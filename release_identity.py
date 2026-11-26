@@ -3,9 +3,9 @@ import json
 import sys
 from pathlib import Path
 APP_ID = 'ncc-cashier'
-APP_VERSION = '1.9.4'
-DISPLAY_VERSION = 'V1.9.4（更新重启修复版）'
-RELEASE_NOTES = '修复点击“安装并重启”后没有反应。确认安装助手启动成功后才退出旧窗口，启动失败会保留程序并显示日志；修复重启时的环境和窗口显示。旧版安装器本身有此故障，本次须通过修复入口或手动完整包升级一次，之后使用程序内更新。结算、日期循环及文档读取逻辑不变，保留设置和操作记录。'
+APP_VERSION = '1.9.5'
+DISPLAY_VERSION = 'V1.9.5（小体积更新测试）'
+RELEASE_NOTES = '小体积更新测试：更新包只含程序、源码和说明，复用已有浏览器，请先使用 V1.9.4 完整修复版。安装重启后标题显示 V1.9.5（小体积更新测试）。保留 V1.9.4 的更新重启修复，结算、日期循环和文档读取逻辑不变，现有设置及操作记录会保留。'
 EXE_NAME = 'NCC出纳结算工具.exe'
 GITHUB_OWNER = 'tjcisyourdady-gif'
 GITHUB_REPO = 'NCC-Cashier'

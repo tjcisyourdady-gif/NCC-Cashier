@@ -27,7 +27,7 @@ class UpdateDialog(tk.Toplevel):
         buttons.pack(fill='x')
         self.check_button=ttk.Button(buttons,text='重新检查',command=app.check_update)
         self.check_button.pack(side='left')
-        self.download_button=ttk.Button(buttons,text='下载完整更新',command=self.download)
+        self.download_button=ttk.Button(buttons,text='下载更新',command=self.download)
         self.download_button.pack(side='left',padx=8)
         self.install_button=ttk.Button(buttons,text='安装并重启',command=app.install_update)
         self.install_button.pack(side='left')

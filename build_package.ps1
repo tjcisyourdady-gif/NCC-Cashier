@@ -2,7 +2,7 @@
     [string]$PythonPath = '',
     [string]$ChromiumSource = '',
     [ValidatePattern('^[A-Za-z0-9_.-]+$')]
-    [string]$Version = 'V1.9.4',
+    [string]$Version = 'V1.9.5',
     [switch]$UpdateOnly,
     [switch]$PublicRelease
 )
@@ -26,7 +26,7 @@ if (-not $PythonPath) {
 if (-not (Test-Path -LiteralPath $PythonPath -PathType Leaf)) {
     throw "未找到构建用 Python：$PythonPath"
 }
-if (-not $ChromiumSource) {
+if (-not $ChromiumSource -and -not $UpdateOnly) {
     $browserCandidates = @(
         'C:\Users\ROG\Desktop\孵化平台\填写工具\收款结算填写工具\收款结算填写工具\ms-playwright（勿动）\chromium-1161',
         (Join-Path $workspaceDir 'v7_package_stage_current_full\收款结算单填写工具V7\ms-playwright（勿动）\chromium-1161'),
@@ -39,7 +39,7 @@ if (-not $ChromiumSource) {
         }
     }
 }
-if (-not $ChromiumSource -or -not (Test-Path -LiteralPath (Join-Path $ChromiumSource 'chrome-win\chrome.exe') -PathType Leaf)) {
+if (-not $UpdateOnly -and (-not $ChromiumSource -or -not (Test-Path -LiteralPath (Join-Path $ChromiumSource 'chrome-win\chrome.exe') -PathType Leaf))) {
     throw '未找到 chromium-1161 浏览器，请通过 -ChromiumSource 指定现有完整目录。'
 }
 
@@ -56,7 +56,7 @@ $buildSourceDir = Assert-ProjectPath (Join-Path $projectDir "build\source_$stamp
 $packageName = "NCC出纳结算工具_$Version"
 $releaseName = if ($UpdateOnly) { $packageName } else { "${packageName}_完整版" }
 $releaseDir = Assert-ProjectPath (Join-Path $projectDir "release\$releaseName")
-$zipName = if ($UpdateOnly) { "${packageName}_仅更新程序.zip" } else { "${packageName}_完整版.zip" }
+$zipName = if ($UpdateOnly) { "${packageName}_轻量更新.zip" } else { "${packageName}_完整版.zip" }
 $zipPath = Assert-ProjectPath (Join-Path $projectDir $zipName)
 $logPath = Assert-ProjectPath (Join-Path $projectDir "build\build_$stamp.log")
 
@@ -114,13 +114,14 @@ foreach ($readme in @('使用说明.txt', 'README.md', '调试读取文档.bat')
     }
 }
 
+# 轻量更新同样包含源码和说明；仅省略浏览器与默认配置。
+Copy-Item -LiteralPath (Join-Path $projectDir '完整包开始使用.txt') -Destination $releaseDir
+$sourceDir = Assert-ProjectPath (Join-Path $releaseDir '源码')
+New-Item -ItemType Directory -Path $sourceDir | Out-Null
+foreach ($sourcePath in (Get-ChildItem -LiteralPath $buildSourceDir -File)) {
+    Copy-Item -LiteralPath $sourcePath.FullName -Destination $sourceDir
+}
 if (-not $UpdateOnly) {
-    Copy-Item -LiteralPath (Join-Path $projectDir '完整包开始使用.txt') -Destination $releaseDir
-    $sourceDir = Assert-ProjectPath (Join-Path $releaseDir '源码')
-    New-Item -ItemType Directory -Path $sourceDir | Out-Null
-    foreach ($sourcePath in (Get-ChildItem -LiteralPath $buildSourceDir -File)) {
-        Copy-Item -LiteralPath $sourcePath.FullName -Destination $sourceDir
-    }
     Push-Location -LiteralPath $projectDir
     try {
         $settingsArgs = @((Join-Path $projectDir 'prepare_build_source.py'), '--settings', (Join-Path $releaseDir '出纳结算设置.json'))
@@ -132,12 +133,7 @@ if (-not $UpdateOnly) {
     }
 }
 
-if ($UpdateOnly) {
-    $updateFiles = @((Join-Path $releaseDir 'NCC出纳结算工具.exe'), (Join-Path $releaseDir '使用说明.txt'), (Join-Path $releaseDir '调试读取文档.bat'))
-    Compress-Archive -LiteralPath $updateFiles -DestinationPath $zipPath -CompressionLevel Optimal
-} else {
-    Compress-Archive -LiteralPath $releaseDir -DestinationPath $zipPath -CompressionLevel Optimal
-}
+Compress-Archive -LiteralPath $releaseDir -DestinationPath $zipPath -CompressionLevel Optimal
 Write-Host "发行目录：$releaseDir"
 Write-Host "交付压缩包：$zipPath"
 Write-Host "构建日志：$logPath"
