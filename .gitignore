@@ -1,0 +1,12 @@
+__pycache__/
+build/
+release/
+release_upload/
+.updates/
+.update_secrets/
+.release-secrets/
+logs/
+userdata/
+轮询测试结果/
+*.zip
+出纳结算设置.json

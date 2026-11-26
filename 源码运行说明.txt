@@ -1,0 +1,12 @@
+源码入口
+
+使用完整包时，不需要安装开发环境：主目录 EXE 和“调试读取文档.bat”均可直接运行。
+
+需要运行或修改源码时，使用 Python 3.8 和 Playwright 1.29.1。
+在完整包的“源码”目录运行以下命令，只读取文档，不进入 NCC：
+  python skip_list_debug.py --base-dir ..
+它会复用上一级完整包中的浏览器、设置，并把结果写入上一级 logs\清单读取结果。
+
+GUI 源码入口为 settlement_gui.py，GUI 中也有“调试：仅读清单”按钮。
+PyInstaller 构建入口为 build_package.ps1；不带 -UpdateOnly 时生成完整包。
+构建用 Python 环境需含 Playwright、PyInstaller 和 Tcl/Tk。
