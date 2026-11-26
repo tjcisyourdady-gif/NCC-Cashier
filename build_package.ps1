@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$PythonPath = '',
     [string]$ChromiumSource = '',
     [ValidatePattern('^[A-Za-z0-9_.-]+$')]

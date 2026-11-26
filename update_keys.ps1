@@ -1,4 +1,4 @@
-param([switch]$Initialize, [string]$PayloadPath, [string]$OutputPath, [string]$KeyDirectory='', [string]$PublicKeyPath='')
+﻿param([switch]$Initialize, [string]$PayloadPath, [string]$OutputPath, [string]$KeyDirectory='', [string]$PublicKeyPath='')
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.Security
 $privatePath=Join-Path $PSScriptRoot '.release-secrets\ncc-signing.dpapi'

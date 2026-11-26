@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$PlanPath,[Parameter(Mandatory=$true)][string]$PlanSha256,[switch]$NoRestart)
+﻿param([Parameter(Mandatory=$true)][string]$PlanPath,[Parameter(Mandatory=$true)][string]$PlanSha256,[switch]$NoRestart)
 $ErrorActionPreference='Stop'
 function File-Hash([string]$Path) {
     $stream=[IO.File]::OpenRead($Path)
