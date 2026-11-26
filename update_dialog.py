@@ -52,10 +52,10 @@ class UpdateDialog(tk.Toplevel):
             self.notes.insert('end',data['notes'] or '暂无新版本说明。')
             self.notes.configure(state='disabled')
             self.last_notes=data['notes']
-        busy=data['status'] in ('checking','downloading','staging','installing')
+        busy=self.app._update_installing or data['status'] in ('checking','downloading','staging','starting','installing')
         self.check_button.configure(state='disabled' if busy else 'normal')
         self.download_button.configure(state='normal' if data['status']=='available' else 'disabled')
-        self.install_button.configure(state='normal' if data['status']=='ready' and not self.app.task_running() else 'disabled')
+        self.install_button.configure(state='normal' if data['status']=='ready' and not busy and not self.app.task_running() else 'disabled')
         self.timer=self.after(300,self.refresh)
 
     def destroy(self):

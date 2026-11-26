@@ -1,4 +1,4 @@
-﻿param([Parameter(Mandatory=$true)][string]$PlanPath,[Parameter(Mandatory=$true)][string]$PlanSha256,[switch]$NoRestart)
+﻿param([Parameter(Mandatory=$true)][string]$PlanPath,[Parameter(Mandatory=$true)][string]$PlanSha256,[switch]$NoRestart,[string]$ReadyPath='')
 $ErrorActionPreference='Stop'
 function File-Hash([string]$Path) {
     $stream=[IO.File]::OpenRead($Path)
@@ -27,14 +27,27 @@ $applied=New-Object System.Collections.Generic.List[object]
 $restart=$false
 $locked=$false
 try {
+    $waitIds=@([int]$plan.pid)
+    if ($plan.parent_pid) {
+        $parent=Get-Process -Id $plan.parent_pid -ErrorAction SilentlyContinue
+        if ($parent -and $parent.Path -eq $exe) { $waitIds+=([int]$plan.parent_pid) }
+    }
+    $others=@(Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($exe)) -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe -and $_.Id -notin $waitIds })
+    if ($others.Count -gt 0) { throw '同目录还有另一个 NCC 程序，请关闭其他窗口后重试安装。' }
+    if ($ReadyPath) {
+        $readyFile=In-Root $ReadyPath $updateRoot
+        @{app_id='ncc-cashier';plan_sha256=$PlanSha256;helper_pid=$PID;status='waiting_for_exit'} | ConvertTo-Json | Set-Content -LiteralPath $readyFile -Encoding UTF8
+    }
+    Write-Output '安装助手已就绪，等待旧程序退出。'
     $deadline=(Get-Date).AddSeconds(120)
-    while (Get-Process -Id $plan.pid -ErrorAction SilentlyContinue) {
+    while (@($waitIds | ForEach-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue }).Count -gt 0) {
         if ((Get-Date) -gt $deadline) { throw '程序未退出，未修改文件。' }
         Start-Sleep -Milliseconds 250
     }
     $lock=[IO.File]::Open($lockPath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::ReadWrite)
     $lock.Lock(0,1)
     $locked=$true
+    Write-Output '开始备份并安装更新。'
     if ($lock.Length -eq 0) { $lock.WriteByte(0); $lock.Flush() }
     New-Item -ItemType Directory -Path $backup -Force | Out-Null
     $prepared=New-Object System.Collections.Generic.List[object]
@@ -77,6 +90,7 @@ try {
     @{status='success';version=$plan.version;time=(Get-Date).ToString('s')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $updateRoot 'last-result.json') -Encoding UTF8
     $restart=$true
 } catch {
+    $failureMessage=$_.Exception.Message
     $rollback=$true
     for ($i=$applied.Count-1;$i -ge 0;$i--) {
         $file=$applied[$i]
@@ -85,9 +99,24 @@ try {
             elseif (Test-Path -LiteralPath $file.Target) { Remove-Item -LiteralPath $file.Target -Force }
         } catch { $rollback=$false }
     }
-    @{status='failed';rollback=$rollback;applied_count=$applied.Count;message=$_.Exception.Message;time=(Get-Date).ToString('s')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $updateRoot 'last-result.json') -Encoding UTF8
+    Write-Output ('安装失败：'+$failureMessage)
+    @{status='failed';rollback=$rollback;applied_count=$applied.Count;plan_sha256=$PlanSha256;message=$failureMessage;time=(Get-Date).ToString('s')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $updateRoot 'last-result.json') -Encoding UTF8
     $restart=$rollback -and $locked
 } finally {
     if ($lock) { try { $lock.Unlock(0,1) } catch {}; $lock.Dispose() }
 }
-if ($restart -and -not $NoRestart -and (Test-Path -LiteralPath $exe)) { Start-Process -FilePath $exe -WorkingDirectory $appDir -WindowStyle Hidden }
+if ($restart -and -not $NoRestart -and (Test-Path -LiteralPath $exe)) {
+    foreach ($name in @((Get-ChildItem Env: | Where-Object { $_.Name -eq '_MEIPASS2' -or $_.Name -like '_PYI_*' -or $_.Name -in @('TCL_LIBRARY','TK_LIBRARY') } | Select-Object -ExpandProperty Name))) {
+        [Environment]::SetEnvironmentVariable($name,$null,'Process')
+    }
+    $env:PYINSTALLER_RESET_ENVIRONMENT='1'
+    try {
+        $restarted=Start-Process -FilePath $exe -WorkingDirectory $appDir -WindowStyle Normal -PassThru
+        $outcome=Get-Content -LiteralPath (Join-Path $updateRoot 'last-result.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        $outcome | Add-Member -MemberType NoteProperty -Name restarted_pid -Value $restarted.Id -Force
+        $outcome | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $updateRoot 'last-result.json') -Encoding UTF8
+    } catch {
+        @{status='restart_failed';version=$plan.version;message=$_.Exception.Message;time=(Get-Date).ToString('s')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $updateRoot 'last-result.json') -Encoding UTF8
+        throw
+    }
+}

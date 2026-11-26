@@ -155,6 +155,35 @@ class ArchiveTests(unittest.TestCase):
 
 
 class ManagerTests(unittest.TestCase):
+    def test_clean_child_environment_does_not_reuse_frozen_runtime(self):
+        with patch.dict(os.environ,{'_MEIPASS2':'old','_PYI_APPLICATION_HOME_DIR':'old','TCL_LIBRARY':'old','PSModulePath':'old'}):
+            cleaned=upd.clean_child_environment()
+        for key in ('_MEIPASS2','_PYI_APPLICATION_HOME_DIR','TCL_LIBRARY','PSModulePath'):
+            self.assertNotIn(key,cleaned)
+        self.assertEqual(cleaned['PYINSTALLER_RESET_ENVIRONMENT'],'1')
+
+    def test_exited_helper_is_reported_even_with_exit_code_zero(self):
+        with tempfile.TemporaryDirectory() as folder:
+            child=Mock(); child.poll.return_value=0
+            with self.assertRaisesRegex(upd.UpdateError,'退出码 0'):
+                upd.await_installer_ready(child,Path(folder)/'ready.json','hash',Path(folder)/'install.log',.01)
+
+    def test_missing_helper_ack_is_stopped_before_parent_can_close(self):
+        with tempfile.TemporaryDirectory() as folder:
+            child=Mock(); child.poll.return_value=None
+            with self.assertRaisesRegex(upd.UpdateError,'启动超时'):
+                upd.await_installer_ready(child,Path(folder)/'ready.json','hash',Path(folder)/'install.log',.01)
+            child.terminate.assert_called_once_with()
+            child.wait.assert_called_once_with(timeout=5)
+
+    def test_ready_ack_requires_correct_plan_and_a_live_helper(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'ready.json'
+            path.write_text(json.dumps({'app_id':identity.APP_ID,'plan_sha256':'good'}),encoding='utf-8-sig')
+            child=Mock(); child.poll.return_value=None
+            upd.await_installer_ready(child,path,'good',Path(folder)/'install.log',.1)
+            child.terminate.assert_not_called()
+
     def test_check_resets_stale_ready_and_reports_failure_without_touching_app(self):
         with tempfile.TemporaryDirectory() as folder:
             manager=upd.UpdateManager(folder); manager.ready={'old':1}
@@ -258,6 +287,52 @@ class InstallerTests(unittest.TestCase):
 
 
 class StartupGuiTests(unittest.TestCase):
+    def test_install_failure_keeps_window_and_restores_buttons(self):
+        import threading,time
+        from settlement_gui import SettlementApp
+        with tempfile.TemporaryDirectory() as folder:
+            root=tk.Tk(); root.withdraw(); app=SettlementApp(root,folder,auto_update=False)
+            called=threading.Event()
+            def fail(_):
+                called.set()
+                raise upd.UpdateError('测试：安装助手未能启动')
+            try:
+                with patch.object(app.updater,'start_installer',side_effect=fail),patch.object(app,'_destroy') as destroy:
+                    app.install_update()
+                    self.assertTrue(called.wait(2))
+                    end=time.monotonic()+2
+                    while app._update_installing and time.monotonic()<end:
+                        app._drain_events(); time.sleep(.01)
+                    self.assertFalse(app._update_installing)
+                    self.assertTrue(root.winfo_exists())
+                    self.assertIn('未能启动',app.updater.status()['message'])
+                    self.assertEqual(str(app.start_button['state']),'normal')
+                    destroy.assert_not_called()
+            finally: app._destroy()
+
+    def test_install_waits_for_helper_confirmation_before_closing_window(self):
+        import threading,time
+        from settlement_gui import SettlementApp
+        with tempfile.TemporaryDirectory() as folder:
+            root=tk.Tk(); root.withdraw(); app=SettlementApp(root,folder,auto_update=False)
+            started=threading.Event(); confirmed=threading.Event()
+            def wait_for_ack(_):
+                started.set(); confirmed.wait(2)
+                return app.updater._state(status='installing')
+            try:
+                with patch.object(app.updater,'start_installer',side_effect=wait_for_ack),patch.object(app,'_destroy') as destroy:
+                    app.install_update()
+                    self.assertTrue(started.wait(1))
+                    app._drain_events(); destroy.assert_not_called()
+                    self.assertTrue(root.winfo_exists())
+                    confirmed.set()
+                    end=time.monotonic()+2
+                    while not destroy.called and time.monotonic()<end:
+                        app._drain_events(); time.sleep(.01)
+                    destroy.assert_called_once_with()
+            finally:
+                confirmed.set(); app._destroy()
+
     def test_public_blank_configuration_loads_but_cannot_start_financial_task(self):
         from settlement_core import Settings,load_settings,resolve_date_range
         from dataclasses import asdict

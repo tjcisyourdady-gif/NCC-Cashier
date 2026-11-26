@@ -514,17 +514,25 @@ class SettlementApp:
             self.update_dialog=UpdateDialog(self)
 
     def install_update(self):
-        if self.task_running():
+        if self._update_installing:
             return
+        if self.task_running():
+            self.updater._state(message='请先停止结算或调试任务，再安装更新。')
+            return
+        self._update_installing=True
+        self._set_running(True)
+        self.stop_button.configure(state='disabled')
+        self.updater._state(status='starting',message='正在准备安装，请稍候…')
+        threading.Thread(target=self._start_update_worker,name='NCCUpdateInstall',daemon=False).start()
+
+    def _start_update_worker(self):
         try:
-            self._update_installing=True
             self.updater.start_installer(self.task_running)
         except Exception as exc:
-            self._update_installing=False
-            self.updater._state(status='error',message=str(exc))
-            return
-        self._set_running(True)
-        self._destroy()
+            self.logger.error('更新安装助手启动失败\n%s',traceback.format_exc())
+            self.events.put(('update_install_failed',str(exc)))
+        else:
+            self.events.put(('update_install_ready',self.updater.status()))
 
     def current_settings(self, time_values=None, validate_dates=True):
         values = validate_time_options(time_values if time_values is not None else {name: var.get() for name, var in self.time_vars.items()})
@@ -758,6 +766,16 @@ class SettlementApp:
                 kind, payload = self.events.get_nowait()
             except queue.Empty:
                 break
+            if kind=='update_install_ready':
+                self._destroy()
+                return
+            if kind=='update_install_failed':
+                self._update_installing=False
+                self.updater._state(status='ready' if self.updater.ready is not None else 'error',message=payload)
+                self._set_running(False)
+                self.status.set('更新尚未启动，原程序已保留，请查看更新窗口和日志。')
+                self._append_log('error',payload)
+                continue
             if kind == 'skip_result':
                 if payload['status'] == 'success':
                     self.read_result_status.set('{}：{} 个编号，{}'.format(payload['modeLabel'], payload['uniqueCount'], payload['readAt'][11:19]))
@@ -796,6 +814,9 @@ class SettlementApp:
             messagebox.showinfo("日志目录", "{}\n\n{}".format(self.logs_dir, exc), parent=self.root)
 
     def close_window(self):
+        if self._update_installing:
+            self.status.set('正在等待安装助手就绪，请稍候…')
+            return
         if self.worker is not None and self.worker.is_alive():
             self.closing = True
             self.stop()

@@ -1,5 +1,6 @@
 """Python 3.8 兼容的独立更新客户端。只使用标准库，不控制桌面窗口。"""
 import base64
+from contextlib import contextmanager
 import hashlib
 import hmac
 import json
@@ -11,6 +12,7 @@ import stat
 import subprocess
 import sys
 import threading
+import time
 import uuid
 import zipfile
 from pathlib import Path
@@ -33,6 +35,63 @@ _RESERVED = re.compile(r'^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)',re.I)
 
 class UpdateError(RuntimeError):
     pass
+
+
+def clean_child_environment():
+    env=dict(os.environ)
+    for name in list(env):
+        if name=='_MEIPASS2' or name.startswith('_PYI_') or name in ('TCL_LIBRARY','TK_LIBRARY','PSModulePath'):
+            env.pop(name,None)
+    env['PYINSTALLER_RESET_ENVIRONMENT']='1'
+    bundled=getattr(sys,'_MEIPASS',None)
+    if bundled:
+        root=os.path.normcase(os.path.abspath(str(bundled)))
+        env['PATH']=os.pathsep.join(part for part in env.get('PATH','').split(os.pathsep)
+            if part and not (os.path.normcase(os.path.abspath(part))==root or
+                os.path.normcase(os.path.abspath(part)).startswith(root+os.sep)))
+    return env
+
+
+@contextmanager
+def system_dll_search():
+    if os.name!='nt' or not getattr(sys,'frozen',False):
+        yield
+        return
+    import ctypes
+    kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+    kernel.GetDllDirectoryW.argtypes=[ctypes.c_uint32,ctypes.c_wchar_p]
+    kernel.SetDllDirectoryW.argtypes=[ctypes.c_wchar_p]
+    buffer=ctypes.create_unicode_buffer(32768)
+    kernel.GetDllDirectoryW(len(buffer),buffer)
+    previous=buffer.value
+    if not kernel.SetDllDirectoryW(None): raise UpdateError('无法准备系统安装助手环境。')
+    try: yield
+    finally: kernel.SetDllDirectoryW(previous or None)
+
+
+def await_installer_ready(child,ready_path,plan_hash,log_path,timeout=20):
+    deadline=time.monotonic()+timeout
+    while time.monotonic()<deadline:
+        if ready_path.exists():
+            try:
+                marker=json_bytes(ready_path.read_bytes())
+                if marker.get('app_id')==identity.APP_ID and marker.get('plan_sha256')==plan_hash and child.poll() is None:
+                    return
+            except (ValueError,OSError):
+                pass
+        code=child.poll()
+        if code is not None:
+            detail='退出码 '+str(code)
+            try:
+                result=json_bytes((ready_path.parents[1]/'last-result.json').read_bytes())
+                if result.get('plan_sha256')==plan_hash: detail=result.get('message',detail)
+            except (ValueError,OSError):
+                pass
+            raise UpdateError('安装助手未能启动（{}），原程序未关闭。日志：{}'.format(detail,log_path))
+        time.sleep(.1)
+    child.terminate()
+    child.wait(timeout=5)
+    raise UpdateError('安装助手启动超时，原程序未关闭。日志：'+str(log_path))
 
 
 def version_tuple(value):
@@ -318,7 +377,7 @@ class UpdateManager:
         finally: self.operation.release()
 
     def installation_plan(self):
-        if self.ready is None or self.status()['status']!='ready': raise UpdateError('尚无已校验的更新。')
+        if self.ready is None or self.status()['status'] not in ('ready','starting'): raise UpdateError('尚无已校验的更新。')
         ready=self.ready
         stage=ready['stage'].resolve()
         stage.relative_to(self.root.resolve())
@@ -337,11 +396,13 @@ class UpdateManager:
         if os.name!='nt': raise UpdateError('自动安装目前只支持 Windows。')
         if not self.operation.acquire(False): raise UpdateError('更新操作正在进行中。')
         try:
+            self._state(status='starting',message='正在校验文件并启动安装助手，请稍候…')
             from ncc_safety import SingleInstanceLock
             lock=SingleInstanceLock(self.base_dir/'logs'/'结算操作记录.json').acquire()
             try:
                 if is_busy(): raise UpdateError('任务状态已变化，未开始安装。')
                 plan=self.installation_plan()
+                plan['parent_pid']=os.getppid()
                 plan['lock_path']=str(lock.lock_path)
                 ready=self.ready
                 plan_path=ready['job']/'install-plan.json'
@@ -349,13 +410,22 @@ class UpdateManager:
                 resource=Path(getattr(sys,'_MEIPASS',Path(__file__).parent))/'update_install.ps1'
                 helper=ready['job']/'install.ps1'
                 shutil.copyfile(resource,helper)
-                flags=getattr(subprocess,'CREATE_NO_WINDOW',0)|getattr(subprocess,'DETACHED_PROCESS',0)
-                subprocess.Popen(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',str(helper),
-                    '-PlanPath',str(plan_path),'-PlanSha256',sha256_file(plan_path)],
-                    creationflags=flags,close_fds=True)
+                ready_path=ready['job']/('helper-ready-'+uuid.uuid4().hex+'.json')
+                log_path=ready['job']/'installer.log'
+                plan_hash=sha256_file(plan_path)
+                powershell=Path(os.environ.get('SystemRoot',r'C:\Windows'))/'System32'/'WindowsPowerShell'/'v1.0'/'powershell.exe'
+                with log_path.open('ab') as log,system_dll_search():
+                    child=subprocess.Popen([str(powershell),'-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',str(helper),
+                        '-PlanPath',str(plan_path),'-PlanSha256',plan_hash,'-ReadyPath',str(ready_path)],
+                        creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0),close_fds=True,
+                        stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT,env=clean_child_environment())
+                await_installer_ready(child,ready_path,plan_hash,log_path)
                 self.install_lock=lock
                 return self._state(status='installing',message='正在关闭程序并安装更新…')
             except BaseException:
                 lock.release()
                 raise
+        except Exception as exc:
+            self._state(status='ready' if self.ready is not None else 'error',message=str(exc))
+            raise
         finally: self.operation.release()
