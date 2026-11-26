@@ -4,6 +4,8 @@ NCC 结算（出纳）自动处理工具，提供日期循环、取消结算清�
 
 本项目的源码、发行包和更新清单均维护在独立仓库 [NCC-Cashier](https://github.com/tjcisyourdady-gif/NCC-Cashier)。
 
+V1.9.3 为独立仓库更新测试版。安装重启后，窗口标题显示“V1.9.3（独立仓库更新测试）”，业务处理逻辑沿用 V1.9.2。
+
 ## 使用
 
 从 [Releases](https://github.com/tjcisyourdady-gif/NCC-Cashier/releases) 下载完整包，全部解压后运行 `NCC出纳结算工具.exe`。完整包包含运行环境、浏览器和源码。
@@ -24,7 +26,7 @@ V1.9 和 V1.9.1 会从原地址收到一次 V1.9.2 迁移更新。安装后只�
 python -m pip install -r requirements.txt
 python settlement_gui.py
 python run_offline_tests.py test_app_updater
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_package.ps1 -PythonPath C:\Python38\python.exe -ChromiumSource C:\Browsers\chromium-1161 -Version V1.9.2 -PublicRelease
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_package.ps1 -PythonPath C:\Python38\python.exe -ChromiumSource C:\Browsers\chromium-1161 -Version V1.9.3 -PublicRelease
 ```
 
 源码和公开包不包含私人文档默认网址、密码、认证信息、日志或结算结果。

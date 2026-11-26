@@ -10,7 +10,7 @@ import ncc_browser
 from settlement_core import Settings, load_settings
 
 project = Path(__file__).resolve().parent
-version=sys.argv[1] if len(sys.argv)>1 else 'V1.9.2'
+version=sys.argv[1] if len(sys.argv)>1 else 'V1.9.3'
 folder = project / 'release' / ('NCC出纳结算工具_'+version+'_完整版')
 zip_path = project / ('NCC出纳结算工具_'+version+'_完整版.zip')
 root_name = folder.name + '/'

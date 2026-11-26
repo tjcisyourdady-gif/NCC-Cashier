@@ -2,7 +2,7 @@
     [string]$PythonPath = '',
     [string]$ChromiumSource = '',
     [ValidatePattern('^[A-Za-z0-9_.-]+$')]
-    [string]$Version = 'V1.9.2',
+    [string]$Version = 'V1.9.3',
     [switch]$UpdateOnly,
     [switch]$PublicRelease
 )
