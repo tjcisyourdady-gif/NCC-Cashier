@@ -3,9 +3,9 @@ import json
 import sys
 from pathlib import Path
 APP_ID = 'ncc-cashier'
-APP_VERSION = '1.9.5'
-DISPLAY_VERSION = 'V1.9.5（小体积更新测试）'
-RELEASE_NOTES = '小体积更新测试：更新包只含程序、源码和说明，复用已有浏览器，请先使用 V1.9.4 完整修复版。安装重启后标题显示 V1.9.5（小体积更新测试）。保留 V1.9.4 的更新重启修复，结算、日期循环和文档读取逻辑不变，现有设置及操作记录会保留。'
+APP_VERSION = '1.9.6'
+DISPLAY_VERSION = 'V1.9.6（启动更新提示）'
+RELEASE_NOTES = '新增启动更新提示：每次打开程序自动后台检查，发现新版本后显示版本及更新说明，可选“更新”或“忽略”。选择更新会自动下载、校验、安装并重启；忽略或关闭提示仅对本次启动生效。无更新或检查失败不弹窗；最小化、后台或任务运行时延后提示，停止任务后才允许安装。继续使用不含浏览器的轻量更新包，复用 V1.9.4 完整版的现有浏览器，保留已有设置、登录数据及操作记录。'
 EXE_NAME = 'NCC出纳结算工具.exe'
 GITHUB_OWNER = 'tjcisyourdady-gif'
 GITHUB_REPO = 'NCC-Cashier'

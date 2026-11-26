@@ -344,7 +344,7 @@ class StartupGuiTests(unittest.TestCase):
             self.assertEqual(settings.skip_list_url,'')
             with self.assertRaisesRegex(ValueError,'网址'): resolve_date_range(settings)
 
-    def test_each_app_open_schedules_a_background_check_without_popup(self):
+    def test_each_app_open_schedules_a_background_check_before_any_prompt(self):
         from settlement_gui import SettlementApp
         for _ in range(2):
             with tempfile.TemporaryDirectory() as folder,patch('settlement_gui.threading.Thread') as thread:
@@ -354,7 +354,8 @@ class StartupGuiTests(unittest.TestCase):
                     self.assertIsNotNone(app._startup_update_id)
                     root.after_cancel(app._startup_update_id)
                     app._startup_check_update()
-                    self.assertEqual(thread.call_args.kwargs['target'],app.updater.check)
+                    self.assertEqual(thread.call_args.kwargs['target'],app._check_update_worker)
+                    self.assertEqual(thread.call_args.kwargs['args'],(True,))
                     self.assertTrue(thread.call_args.kwargs['daemon'])
                     thread.return_value.start.assert_called_once_with()
                     self.assertIsNone(app.update_dialog)

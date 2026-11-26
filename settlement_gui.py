@@ -328,6 +328,11 @@ class SettlementApp:
         self.worker = None
         self.updater = UpdateManager(self.base_dir)
         self.update_dialog = None
+        self.startup_update_dialog = None
+        self._startup_check_started = False
+        self._startup_prompt_handled = not auto_update
+        self._startup_pending_update = None
+        self._auto_update_requested = False
         self._update_installing = False
         self._update_after_id = None
         self._startup_update_id = None
@@ -496,22 +501,100 @@ class SettlementApp:
 
     def _startup_check_update(self):
         self._startup_update_id=None
-        self.check_update()
+        if self._startup_check_started:
+            return
+        self._startup_check_started=True
+        state=self.updater.status()
+        if state['status']=='idle':
+            self.check_update(startup=True)
+        elif state['status']=='available':
+            self._handle_startup_update_result(state)
 
-    def check_update(self):
+    def check_update(self,startup=False):
         if not self._update_installing:
-            threading.Thread(target=self.updater.check,name='NCCUpdateCheck',daemon=True).start()
+            if not startup:
+                self._startup_prompt_handled=True
+                self._startup_pending_update=None
+            threading.Thread(target=self._check_update_worker,args=(startup,),name='NCCUpdateCheck',daemon=True).start()
+
+    def _check_update_worker(self,startup):
+        data=self.updater.check()
+        if startup:
+            self.events.put(('startup_update_checked',data))
+
+    def _handle_startup_update_result(self,data):
+        if self._startup_prompt_handled:
+            return
+        if data['status']=='available':
+            self._startup_pending_update=data
+        else:
+            self._startup_prompt_handled=True
+
+    def _can_show_startup_prompt(self):
+        if self.closing or self._update_installing or self.task_running():
+            return False
+        try:
+            focus=self.root.focus_displayof()
+            return (self.root.state() not in ('iconic','withdrawn') and self.root.winfo_viewable()
+                and focus is not None and focus.winfo_toplevel() is self.root and self.root.grab_current() is None)
+        except tk.TclError:
+            return False
+
+    def _maybe_show_startup_prompt(self):
+        data=self._startup_pending_update
+        if data is None or self._startup_prompt_handled:
+            return
+        current=self.updater.status()
+        if current['status']!='available' or current['latest_version']!=data['latest_version']:
+            self._startup_pending_update=None
+            self._startup_prompt_handled=True
+            return
+        if not self._can_show_startup_prompt():
+            return
+        self._startup_prompt_handled=True
+        self._startup_pending_update=None
+        from update_dialog import StartupUpdatePrompt
+        self.startup_update_dialog=StartupUpdatePrompt(self,data)
 
     def _poll_update_status(self):
         self.update_status.set('更新：'+self.updater.status()['message'])
+        self._maybe_show_startup_prompt()
         self._update_after_id=self.root.after(500,self._poll_update_status)
 
     def open_update_dialog(self):
+        self._startup_prompt_handled=True
+        self._startup_pending_update=None
         from update_dialog import UpdateDialog
         if self.update_dialog is not None and self.update_dialog.winfo_exists():
             self.update_dialog.lift()
         else:
             self.update_dialog=UpdateDialog(self)
+
+    def start_prompted_update(self):
+        if self._update_installing:
+            return
+        if self.task_running():
+            self.updater._state(message='任务正在运行，请停止后安装更新。')
+            self.open_update_dialog()
+            return
+        if self.updater.status()['status']!='available':
+            self.open_update_dialog()
+            return
+        self._startup_prompt_handled=True
+        self._startup_pending_update=None
+        self._auto_update_requested=True
+        self._update_installing=True
+        self._set_running(False)
+        self.status.set('正在下载更新，完成后将自动安装并重启…')
+        self.open_update_dialog()
+        threading.Thread(target=self._download_prompted_update_worker,name='NCCStartupUpdate',daemon=True).start()
+
+    def _download_prompted_update_worker(self):
+        try:
+            data=self.updater.download()
+        except Exception as exc:
+            data=self.updater._state(status='error',message=str(exc))
+        self.events.put(('prompted_update_downloaded' if data['status']=='ready' else 'prompted_update_failed',data))
 
     def install_update(self):
         if self._update_installing:
@@ -553,7 +636,7 @@ class SettlementApp:
         return settings
 
     def _update_date_mode(self):
-        running = self.worker is not None and self.worker.is_alive()
+        running = self.task_running() or self._update_installing
         custom_state = "normal" if self.date_mode.get() == "custom" and not running else "disabled"
         for widget in (self.start_entry, self.end_entry, self.start_pick, self.end_pick):
             widget.configure(state=custom_state)
@@ -727,12 +810,13 @@ class SettlementApp:
                 lock.release()
 
     def _set_running(self, running):
-        state = "disabled" if running else "normal"
+        locked=running or self._update_installing
+        state = "disabled" if locked else "normal"
         for widget in (self.start_button, self.debug_button, self.save_button, self.time_button, self.review_button, self.mode_month, self.mode_custom, self.sleep_entry, self.action_delay_entry, self.response_timeout_entry, self.browser_entry, self.browser_browse, self.skip_list_entry):
             widget.configure(state=state)
-        self.stop_button.configure(state="normal" if running else "disabled")
+        self.stop_button.configure(state="normal" if running and not self._update_installing else "disabled")
         self._update_date_mode()
-        if running:
+        if locked:
             for widget in (self.start_entry, self.end_entry, self.start_pick, self.end_pick):
                 widget.configure(state="disabled")
 
@@ -766,11 +850,31 @@ class SettlementApp:
                 kind, payload = self.events.get_nowait()
             except queue.Empty:
                 break
+            if kind=='startup_update_checked':
+                self._handle_startup_update_result(payload)
+                continue
+            if kind=='prompted_update_downloaded':
+                self._update_installing=False
+                if self.task_running():
+                    self._auto_update_requested=False
+                    self._set_running(True)
+                    self.updater._state(message='更新已下载，请停止任务后点击“安装并重启”。')
+                else:
+                    self.install_update()
+                continue
+            if kind=='prompted_update_failed':
+                self._update_installing=False
+                self._auto_update_requested=False
+                self._set_running(False)
+                self.status.set('本次更新未完成，可在“自动更新…”中重试。')
+                self._append_log('error',payload['message'])
+                continue
             if kind=='update_install_ready':
                 self._destroy()
                 return
             if kind=='update_install_failed':
                 self._update_installing=False
+                self._auto_update_requested=False
                 self.updater._state(status='ready' if self.updater.ready is not None else 'error',message=payload)
                 self._set_running(False)
                 self.status.set('更新尚未启动，原程序已保留，请查看更新窗口和日志。')
@@ -815,7 +919,7 @@ class SettlementApp:
 
     def close_window(self):
         if self._update_installing:
-            self.status.set('正在等待安装助手就绪，请稍候…')
+            self.status.set('正在更新，完成后将自动重启，请稍候…')
             return
         if self.worker is not None and self.worker.is_alive():
             self.closing = True

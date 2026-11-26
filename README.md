@@ -4,21 +4,25 @@ NCC 结算（出纳）自动处理工具，提供日期循环、取消结算清�
 
 本项目的源码、发行包和更新清单均维护在独立仓库 [NCC-Cashier](https://github.com/tjcisyourdady-gif/NCC-Cashier)。
 
-V1.9.4 修复“安装并重启”没有反应：确认安装助手启动后才关闭旧窗口，失败时保留窗口和错误日志，并修复重新启动环境及窗口显示。已用窗口版 onefile EXE 验证退出、替换自身、重新解包和自动启动的完整链路。
+V1.9.6 新增启动更新提示：每次启动自动检查，发现新版本时可选“更新”或“忽略”。更新会自动下载、校验、安装并重启；忽略仅对本次启动生效。继续提供不含浏览器的轻量更新包。
 
-V1.9.2/V1.9.3 的安装启动器本身存在故障，本次请使用本地修复入口，或将完整包解压到新目录，复制旧版的“出纳结算设置.json”和“logs”后运行新版；之后即可继续使用程序内更新。不要用公开包的默认设置覆盖自己的设置文件。
+V1.9.4 已修复“安装并重启”没有反应：确认安装助手启动后才关闭旧窗口，失败时保留窗口和错误日志。V1.9.2/V1.9.3 用户请先将 V1.9.4 完整包解压到新目录，复制旧版的“出纳结算设置.json”和“logs”后运行；之后即可继续使用程序内更新。不要用公开包的默认设置覆盖自己的设置文件。
 
 ## 使用
 
 从 [Releases](https://github.com/tjcisyourdady-gif/NCC-Cashier/releases) 下载完整包，全部解压后运行 `NCC出纳结算工具.exe`。完整包包含运行环境、浏览器和源码。
 
-首次安装请使用 [V1.9.4 完整修复包](https://github.com/tjcisyourdady-gif/NCC-Cashier/releases/download/ncc-cashier-v1.9.4/NCC_cashier_1.9.4_full.zip)。V1.9.5 是不含浏览器的轻量更新测试包，适用于已经安装完整包的用户，通过 V1.9.4 的“自动更新…”下载即可。
+首次安装请使用 [V1.9.4 完整修复包](https://github.com/tjcisyourdady-gif/NCC-Cashier/releases/download/ncc-cashier-v1.9.4/NCC_cashier_1.9.4_full.zip)。已安装 V1.9.4/V1.9.5 的用户，通过“自动更新…”下载并安装 V1.9.6 轻量更新即可。
 
 首次使用请填写自己的钉钉清单网址并保存，然后使用“调试：仅读清单”核对读取结果。正式运行先等待手动登录文档，再等待登录 NCC。具体规则见包内“使用说明.txt”。
 
 ## 自动更新
 
-每次启动在后台检查独立仓库根目录的 `latest.json`，优先使用国内直连镜像。清单须通过签名验证，完整包须通过 SHA-256 校验。停止任务后可在“自动更新…”中安装并重启，现有设置、登录数据、日志和操作记录会保留。
+每次启动在后台检查独立仓库根目录的 `latest.json`，优先使用国内直连镜像。发现新版本后显示版本及说明，可选“更新”或“忽略”：更新会自动下载、校验、安装并重启；忽略或关闭提示仅对本次启动生效，下次启动仍会检查。已经是最新版或检查失败时不弹窗。
+
+最小化、后台、其他弹窗打开或任务运行期间会延后提示，回到主窗口且任务结束后再显示。安装前必须停止结算或调试任务，更新期间不能启动新任务。下载或安装助手启动失败时保留程序供重试。右上角“自动更新…”仍可手动检查和更新。
+
+清单须通过签名验证，更新包须通过 SHA-256 校验；现有设置、登录数据、日志和操作记录会保留。首次升级到 V1.9.6 后，后续发现新版本时才会使用新增的启动提示。
 
 V1.9 和 V1.9.1 会从原地址收到一次 V1.9.2 迁移更新。安装后只从 NCC-Cashier 检查后续更新；原地址保留迁移入口，避免已安装的程序失去升级渠道。
 
@@ -29,8 +33,9 @@ V1.9 和 V1.9.1 会从原地址收到一次 V1.9.2 迁移更新。安装后只�
 ```powershell
 python -m pip install -r requirements.txt
 python settlement_gui.py
-python run_offline_tests.py test_app_updater
+python run_offline_tests.py test_app_updater test_startup_update_prompt
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_package.ps1 -PythonPath C:\Python38\python.exe -ChromiumSource C:\Browsers\chromium-1161 -Version V1.9.4 -PublicRelease
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_package.ps1 -PythonPath C:\Python38\python.exe -Version V1.9.6 -UpdateOnly -PublicRelease
 ```
 
 源码和公开包不包含私人文档默认网址、密码、认证信息、日志或结算结果。
